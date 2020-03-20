@@ -189,6 +189,7 @@ result = zos.reservation_result(rid)
 print("provisioning result")
 print(result)
 ```
+## Example : Reserve S3 storage servers
 
 
 ```python
@@ -248,4 +249,48 @@ zos.container.create(reservation=r,
 
 rid = zos.reservation_register(r, j.data.time.epoch+(60*60))
 results = zos.reservation_result(rid)
+```
+
+## Pay reservation to farmer
+
+Once the reservation has been registered, the user needs to pay for it to the farmer
+```python
+zos = j.sal.zosv2
+
+# ... we assume the user already created and registered and reservation
+
+# fist needs to compute how much is needed to be payed
+costs = zos.billing.reservation_resources_cost(reservation)
+for cost in costs:
+    print(cost)
+
+# to be able to send tokens to the farmers, a TFChain wallet or Stellar client needs to be available on the system
+tfchain = j.clients.tfchain.get('myclient')
+client = tfchain.wallets.get("default")
+
+# or use the stellar client
+client = j.clients.stellar.get('myclient')
+
+# once we have verified everything is in order, we create the transaction
+# to send the token to the farms
+transactions = zos.billing.payout_farmers(client, costs, reservation)
+# if everything went ok, at this point your transaction are now sent to the blockchain
+```
+
+## As a farmer verify that a payment as been made for a reservation
+
+```python
+zos = j.sal.zosv2
+
+
+tfchain = j.clients.tfchain.get('myclient')
+client = tfchain.wallets.get("default")
+
+# or use the stellar client
+client = j.clients.stellar.get('myclient')
+
+# the farmer needs to know the reservation ID to be able to check if the payment has arrived for it
+reservation = zos.reservation_get(reservation_id)
+# verify_payments will return true if everything has been paid or false if not
+zos.billing.verify_payments(client, reservation)
 ```
