@@ -8,7 +8,7 @@ class Chatflow(j.baseclasses.object):
     __jslocation__ = "j.sal.reservation_chatflow"
 
     def _init(self, **kwargs):
-        pass
+        j.data.bcdb.get("tfgrid_solutions")
 
     def get_all_ips(self, ip_range):
         """
@@ -47,12 +47,16 @@ class Chatflow(j.baseclasses.object):
         nodes = list(nodes)
         for i in range(number_of_nodes):
             node = random.choice(nodes)
-            while not j.sal.zosv2.nodes_finder.filter_is_up(node):
+            while (
+                not j.sal.zosv2.nodes_finder.filter_is_up(node) or node in nodes_selected or node in access_nodes_filter
+            ):
                 node = random.choice(nodes)
             nodes_selected.append(node)
         return nodes_selected
 
-    def network_configure(self, bot, reservation, nodes, customer_tid, ip_version, number_of_ipaddresses=0):
+    def network_configure(
+        self, bot, reservation, nodes, customer_tid, ip_version, number_of_ipaddresses=0, expiration=None
+    ):
         """
         bot: Gedis chatbot object from chatflow
         reservation: reservation object from schema
@@ -62,7 +66,7 @@ class Chatflow(j.baseclasses.object):
         """
         reservation_copy = copy.copy(reservation)
         explorer = j.clients.explorer.default
-        expiration = j.data.time.epoch + (60 * 60 * 24)
+        expiration = expiration or j.data.time.epoch + (60 * 60 * 24)
         networks_name = []
         network_user_choice = ""
         while (networks_name == [] and network_user_choice == "Existing network") or network_user_choice == "":
@@ -71,7 +75,7 @@ class Chatflow(j.baseclasses.object):
             if network_user_choice == "New network":
                 ip_range = self.ip_range_get(bot)
                 reservation, network_config = self.network_get(
-                    bot, reservation, ip_range, nodes, customer_tid, ip_version, number_of_ipaddresses
+                    bot, reservation, ip_range, nodes, customer_tid, ip_version, number_of_ipaddresses, expiration
                 )
             else:
                 networks = self.network_exists(customer_tid)
@@ -124,7 +128,7 @@ class Chatflow(j.baseclasses.object):
                     )
 
             else:
-                result_check = len(reservation_results) == len(nodes)
+                result_check = len(reservation_results) >= len(nodes)
 
         return reservation, network_config
 
@@ -159,6 +163,7 @@ class Chatflow(j.baseclasses.object):
         number_of_ipaddresses=0,
         interactive=True,
         noninteractive_args=None,
+        expiration=None,
     ):
         """
         bot: Gedis chatbot object from chatflow
@@ -186,6 +191,7 @@ class Chatflow(j.baseclasses.object):
             number_of_ipaddresses,
             interactive=interactive,
             noninteractive_args=noninteractive_args,
+            expiration=expiration,
         )
         return reservation, network_config
 
@@ -201,6 +207,7 @@ class Chatflow(j.baseclasses.object):
         number_of_ipaddresses=0,
         interactive=True,
         noninteractive_args=None,
+        expiration=None,
     ):
         """
         bot: Gedis chatbot object from chatflow
@@ -263,7 +270,7 @@ class Chatflow(j.baseclasses.object):
         j.sal.fs.writeFile(f"/sandbox/cfg/wireguard/{network.name}.conf", f"{wg_quick}")
 
         # register the reservation
-        expiration = j.data.time.epoch + (60 * 60 * 24)
+        expiration = expiration or j.data.time.epoch + (60 * 60 * 24)
         rid = self.reservation_register(reservation, expiration, customer_tid)
 
         network_config["rid"] = rid
@@ -388,7 +395,7 @@ class Chatflow(j.baseclasses.object):
 
     def escrow_qr_show(self, bot, reservation_create_resp):
         # Get escrow info for reservation_create_resp dict
-        escrow_info = j.sal.zosv2.reservation_escrow_infomations_with_qrcodes(reservation_create_resp)
+        escrow_info = j.sal.zosv2.reservation_escrow_information_with_qrcodes(reservation_create_resp)
 
         # view all qrcodes
         for i, escrow in enumerate(escrow_info):
@@ -399,9 +406,28 @@ class Chatflow(j.baseclasses.object):
 {escrow['total_amount']}
 """
             msg = j.tools.jinja2.template_render(text=message_text)
-            bot.qrcode_show_dict(
+            bot.qrcode_show(
                 escrow["qrcode"],
                 title=f"Scan the following with your application or enter the information below manually to proceed with payment #{i+1}",
                 msg=msg,
                 scale=4,
             )
+
+    def save_reservation(self, rid, name, url):
+        rsv_model = j.clients.bcdbmodel.get(url=url, name="tfgrid_solutions")
+        reservation = rsv_model.new()
+        reservation.rid = rid
+        reservation.name = name
+        reservation.save()
+
+    def add_solution_name(self, bot, model):
+        name_exists = False
+        while not name_exists:
+            solution_name = bot.string_ask("Please add a name for your solution")
+            find = model.find(name=solution_name)
+            if len(find) > 0:
+                res = "# Please choose another name because this name already exist"
+                res = j.tools.jinja2.template_render(text=res)
+                bot.md_show(res)
+            else:
+                return solution_name
