@@ -80,7 +80,7 @@ class Zosv2(j.baseclasses.object):
         :return: reservation ID
         :rtype: int
         """
-        me = identity if identity else j.me_identities.me.default
+        me = identity if identity else j.myidentities.me.default
         reservation.customer_tid = me.tid
 
         if expiration_provisioning is None:
@@ -115,7 +115,7 @@ class Zosv2(j.baseclasses.object):
         :return: returns true if not error,raise an exception otherwise
         :rtype: bool
         """
-        me = identity if identity else j.me_identities.me.default
+        me = identity if identity else j.myidentities.me.default
 
         reservation.json = reservation.data_reservation._json
         signature = me.encryptor.sign_hex(reservation.json.encode())
@@ -159,7 +159,7 @@ class Zosv2(j.baseclasses.object):
         :return: true if the reservation has been cancelled successfully
         :rtype: bool
         """
-        me = identity if identity else j.me_identities.me.default
+        me = identity if identity else j.myidentities.me.default
 
         reservation = self.reservation_get(reservation_id)
         payload = j.data.nacl.payload_build(reservation.id, reservation.json.encode())
@@ -168,7 +168,7 @@ class Zosv2(j.baseclasses.object):
         return self._explorer.reservations.sign_delete(reservation_id=reservation_id, tid=me.tid, signature=signature)
 
     def reservation_list(self, tid=None):
-        tid = tid if tid else j.me_identities.me.default.tid
+        tid = tid if tid else j.myidentities.me.default.tid
         result = self._explorer.reservations.list()
         return list(filter(lambda r: r.customer_tid == tid, result))
 
@@ -198,7 +198,7 @@ class Zosv2(j.baseclasses.object):
         return reservation_model.new(datadict=r)
 
     def reservation_live(self, expired=False, cancelled=False, identity=None):
-        me = identity if identity else j.me_identities.me.default
+        me = identity if identity else j.myidentities.me.default
         rs = self._explorer.reservations.list()
 
         now = j.data.time.epoch
